@@ -408,7 +408,9 @@
         .maybeSingle();
 
       if (data) {
-        alert('💞 It’s a Match!');
+        if (confirm('💞 It’s a Match! واش بغيتي تبدا الدردشة دابا؟') && window.openChat) {
+          window.openChat(p.user_id, p.display_name);
+        }
       }
     }
 
