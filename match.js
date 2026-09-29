@@ -1,4 +1,3 @@
-
 (function () {
   const sb = window.sb;
   if (!sb) return;
@@ -462,10 +461,21 @@
     }
 
     matches.forEach(id => {
-      const row = document.createElement('p');
-      row.className = 'panel pad';
-      row.textContent =
-        '💜 ' + (names.get(id) || 'مستخدم');
+      const name = names.get(id) || 'مستخدم';
+
+      const row = document.createElement('div');
+      row.className = 'panel pad row';
+
+      const label = document.createElement('span');
+      label.textContent = '💜 ' + name;
+
+      const chat = document.createElement('button');
+      chat.className = 'btn';
+      chat.textContent = '💬 دردشة';
+      chat.setAttribute('data-chat-user', id);
+      chat.setAttribute('data-chat-name', name);
+
+      row.append(label, chat);
       box.append(row);
     });
 
