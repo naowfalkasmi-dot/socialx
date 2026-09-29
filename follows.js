@@ -65,7 +65,7 @@
       info.append(mk('strong', '', p.username || 'مستخدم'), mk('small', '', (counts[p.id] || 0) + ' متابع' + (followsMe.has(p.id) ? ' · يتابعك' : '')));
       left.append(mk('div', 'avatar', (p.username || 'U')[0].toUpperCase()), info);
       const following = mine.has(p.id);
-      const b = mk('button', following ? 'ghost' : 'btn', following ? 'إلغاء المتابعة' : 'تابع');
+      const b = mk('button', following ? 'ghost' : 'btn', following ? 'إلغاء المتابعة' : (followsMe.has(p.id) ? 'رد المتابعة' : 'تابع'));
       b.onclick = async () => {
         b.disabled = true;
         const r = following
