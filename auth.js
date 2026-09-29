@@ -2,6 +2,7 @@
   const SUPABASE_URL = 'https://ouchxygnnujvrncvsagf.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_4nbWqzDmVImUxVGVwraEdg_10LVtlh-';
   const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  window.sb = sb;
 
   const box = document.createElement('div');
   box.className = 'modal hidden';
