@@ -11,6 +11,7 @@
     if (p.error) { console.error(p.error); return; }
     const names = {};
     (u.data || []).forEach((x) => { names[x.id] = x.username; });
+    if (names[me]) state.name = names[me];
     state.posts = p.data.reverse().map((r) => ({
       id: r.id,
       author: names[r.user_id] || 'مستخدم',
@@ -36,6 +37,21 @@
     document.getElementById('preview').classList.add('hidden');
     document.getElementById('count').textContent = '0 / 1500';
     document.getElementById('modal').classList.add('hidden');
+    load();
+  };
+
+  document.getElementById('editName').onclick = async () => {
+    if (!me) return;
+    const name = prompt('شنو الاسم اللي بغيتي؟ (من 3 حتى 20: حروف، أرقام أو _)', state.name);
+    if (!name) return;
+    const v = name.trim();
+    if (!/^[\p{L}\p{N}_]{3,20}$/u.test(v)) {
+      alert('الاسم خاصو يكون من 3 حتى 20 حرف، غير حروف وأرقام و _');
+      return;
+    }
+    const { error } = await sb.from('profiles').update({ username: v }).eq('id', me);
+    if (error) { alert('وقع مشكل: ' + error.message); return; }
+    state.name = v;
     load();
   };
 
