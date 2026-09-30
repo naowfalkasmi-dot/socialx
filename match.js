@@ -17,7 +17,11 @@
       border:1px solid #7043a0;
       border-radius:22px;
       overflow:hidden;
-    }
+   }
+   .socialx-match-card {
+  box-shadow: 0 10px 30px rgba(164, 67, 233, 0.25);
+  border: 1px solid #a343e9;
+}
     .dating-photo {
       width:100%;
       height:350px;
