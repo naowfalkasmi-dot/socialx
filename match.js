@@ -278,7 +278,7 @@
     }
 
     const card = document.createElement('div');
-    card.className = 'dating-card';
+    card.className = 'dating-card socialx-match-card';
 
     if (p.photo_url) {
       const img = document.createElement('img');
