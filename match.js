@@ -319,7 +319,7 @@
     actions.className = 'dating-actions';
 
     const no = document.createElement('button');
-    no.textContent = '✕';
+    no.textContent =  'تخطي';
     no.onclick = () => react(p, false);
 
     const yes = document.createElement('button');
