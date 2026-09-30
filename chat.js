@@ -168,7 +168,7 @@
     const c = $('datingContent');
     if (!c) return;
     clearInterval(wait);
-    new MutationObserver(refreshBadges).observe(c, { childList: true, subtree: true });
+   // new MutationObserver(refreshBadges).observe(c, { childList: true, subtree: true });
   }, 500);
 
   sb.auth.onAuthStateChange((_e, s) => {
