@@ -16,6 +16,45 @@
   if (!profile || !top || !footer) return;
 
   let me = null;
+  let currentAvatar = null;
+
+  function paint(el, url, letter) {
+    el.replaceChildren();
+    el.style.overflow = 'hidden';
+    if (url) {
+      const i = document.createElement('img');
+      i.src = url;
+      i.alt = '';
+      i.style.cssText = 'width:100%;height:100%;object-fit:cover';
+      el.append(i);
+    } else {
+      el.textContent = letter;
+    }
+  }
+
+  function squarePhoto(file, size) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        const side = Math.min(img.width, img.height);
+        const out = Math.min(size, side);
+        const c = document.createElement('canvas');
+        c.width = out;
+        c.height = out;
+        c.getContext('2d').drawImage(
+          img,
+          (img.width - side) / 2, (img.height - side) / 2, side, side,
+          0, 0, out, out
+        );
+        URL.revokeObjectURL(url);
+        c.toBlob((b) => (b ? resolve(b) : reject(new Error('resize'))), 'image/jpeg', 0.85);
+      };
+      img.onerror = () => reject(new Error('image'));
+      img.src = url;
+    });
+  }
+
   const INPUT =
     'width:100%;padding:12px;margin:6px 0;border-radius:10px;' +
     'border:1px solid #58416e;background:#120d1d;color:white';
@@ -28,6 +67,7 @@
   bar.append(gear);
   top.prepend(bar);
 
+  const profileAv = top.querySelector('.avatar');
   const bio = mk('p', 'hint');
   bio.id = 'profileBio';
   bio.style.cssText = 'margin:6px 0 10px;white-space:pre-wrap;overflow-wrap:anywhere';
@@ -54,6 +94,18 @@
   panel.append(head);
 
   panel.append(mk('h3', '', 'تعديل البروفايل'));
+  const prevAv = mk('div', 'avatar');
+  prevAv.style.cssText = 'width:84px;height:84px;font-size:32px;margin:6px 0';
+  const fileIn = document.createElement('input');
+  fileIn.type = 'file';
+  fileIn.accept = 'image/jpeg,image/png,image/webp';
+  fileIn.style.display = 'none';
+  const pick = mk('button', 'ghost', '📷 تغيير الصورة');
+  const drop = mk('button', 'ghost', 'حذف الصورة');
+  const photoRow = mk('div', 'row');
+  photoRow.style.cssText = 'justify-content:flex-start;gap:10px;margin-bottom:6px';
+  photoRow.append(pick, drop);
+  panel.append(prevAv, photoRow, fileIn);
   const nameLabel = mk('label', 'hint', 'الاسم (من 3 حتى 20: حروف، أرقام أو _)');
   const nameIn = document.createElement('input');
   nameIn.maxLength = 20;
@@ -89,22 +141,26 @@
   /* ---------- البيانات ---------- */
   async function loadMine() {
     if (!me) return;
-    const { data } = await sb.from('profiles').select('username,bio').eq('id', me).maybeSingle();
+    const { data } = await sb.from('profiles').select('username,bio,avatar_url').eq('id', me).maybeSingle();
     if (!data) return;
     bio.textContent = data.bio || '';
     if (data.username) $('profileName').textContent = data.username;
+    currentAvatar = data.avatar_url || null;
+    if (profileAv) paint(profileAv, currentAvatar, (data.username || 'S')[0].toUpperCase());
   }
 
   async function loadSettings() {
     if (!me) return;
     msg('');
     const [pr, mp, u] = await Promise.all([
-      sb.from('profiles').select('username,bio').eq('id', me).maybeSingle(),
+      sb.from('profiles').select('username,bio,avatar_url').eq('id', me).maybeSingle(),
       sb.from('match_profiles').select('visible').eq('user_id', me).maybeSingle(),
       sb.auth.getUser()
     ]);
     nameIn.value = (pr.data && pr.data.username) || '';
     bioIn.value = (pr.data && pr.data.bio) || '';
+    currentAvatar = (pr.data && pr.data.avatar_url) || null;
+    paint(prevAv, currentAvatar, (nameIn.value || 'S')[0].toUpperCase());
     emailP.textContent = (u.data && u.data.user && u.data.user.email) || '';
     if (mp.data) {
       vis.disabled = false;
@@ -142,6 +198,52 @@
     } else {
       msg('تم الحفظ ✅');
     }
+  };
+
+  function removeOld(url) {
+    try {
+      const path = url && url.split('/avatars/')[1];
+      if (path) sb.storage.from('avatars').remove([path.split('?')[0]]);
+    } catch (e) { /* ignore */ }
+  }
+
+  pick.onclick = () => fileIn.click();
+
+  fileIn.onchange = async () => {
+    const f = fileIn.files[0];
+    fileIn.value = '';
+    if (!f || !me) return;
+    if (!/^image\/(jpeg|png|webp)$/.test(f.type)) { msg('خاصها تكون صورة JPG أو PNG أو WEBP'); return; }
+    if (f.size > 20 * 1024 * 1024) { msg('الصورة كبيرة بزاف'); return; }
+    msg('كنرفع الصورة...');
+    try {
+      const blob = await squarePhoto(f, 512);
+      const path = me + '/avatar-' + Date.now() + '.jpg';
+      const up = await sb.storage.from('avatars').upload(path, blob, { contentType: 'image/jpeg' });
+      if (up.error) throw up.error;
+      const url = sb.storage.from('avatars').getPublicUrl(path).data.publicUrl;
+      const { error } = await sb.from('profiles').update({ avatar_url: url }).eq('id', me);
+      if (error) throw error;
+      removeOld(currentAvatar);
+      currentAvatar = url;
+      paint(prevAv, url, 'S');
+      if (profileAv) paint(profileAv, url, 'S');
+      msg('تم تغيير الصورة ✅');
+    } catch (e) {
+      msg('وقع مشكل: ' + (e.message || e));
+    }
+  };
+
+  drop.onclick = async () => {
+    if (!me || !currentAvatar) return;
+    const { error } = await sb.from('profiles').update({ avatar_url: null }).eq('id', me);
+    if (error) { msg('وقع مشكل: ' + error.message); return; }
+    removeOld(currentAvatar);
+    currentAvatar = null;
+    const letter = ((nameIn.value || $('profileName').textContent || 'S')[0] || 'S').toUpperCase();
+    paint(prevAv, null, letter);
+    if (profileAv) paint(profileAv, null, letter);
+    msg('تم حذف الصورة ✅');
   };
 
   out.onclick = () => {
