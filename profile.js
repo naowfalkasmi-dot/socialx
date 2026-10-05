@@ -59,27 +59,96 @@
     'width:100%;padding:12px;margin:6px 0;border-radius:10px;' +
     'border:1px solid #58416e;background:#120d1d;color:white';
 
-  /* ---------- صفحة البروفايل ---------- */
-  const bar = mk('div', 'row');
-  bar.style.cssText = 'justify-content:space-between;margin-bottom:8px';
-  bar.append(mk('span', 'hint', 'حسابي'));
-  const gear = mk('button', 'ghost', '⚙️ الإعدادات');
-  bar.append(gear);
-  top.prepend(bar);
+  /* ---------- صفحة البروفايل (بحال Instagram) ---------- */
+  top.style.display = 'none';
 
-  const profileAv = top.querySelector('.avatar');
+  const ig = mk('div', 'panel');
+  ig.style.cssText = 'padding:14px 16px;margin-bottom:12px';
+
+  const bar = mk('div', 'row');
+  bar.style.marginBottom = '14px';
+  const plus = mk('button', 'ghost', '＋');
+  plus.style.cssText = 'font-size:20px;padding:6px 14px';
+  plus.title = 'منشور جديد';
+  const uname = mk('strong', '', '');
+  uname.style.fontSize = '17px';
+  const gear = mk('button', 'ghost', '☰');
+  gear.style.cssText = 'font-size:20px;padding:6px 14px';
+  gear.title = 'الإعدادات';
+  bar.append(gear, uname, plus);
+
+  const headRow = mk('div');
+  headRow.style.cssText = 'display:flex;align-items:center;gap:18px';
+  const profileAv = mk('div', 'avatar');
+  profileAv.style.cssText = 'width:86px;height:86px;font-size:34px;flex:none';
+  const counts = mk('div');
+  counts.style.cssText = 'flex:1;display:flex;justify-content:space-between;text-align:center';
+  const cell = (label) => {
+    const c = mk('div');
+    const n = mk('div', '', '0');
+    n.style.cssText = 'font-weight:800;font-size:18px';
+    const l = mk('div', 'hint', label);
+    l.style.fontSize = '12px';
+    c.append(n, l);
+    counts.append(c);
+    return n;
+  };
+  const nPosts = cell('منشورات');
+  const nFollowers = cell('متابعون');
+  const nFollowing = cell('يتابع');
+  headRow.append(profileAv, counts);
+
   const bio = mk('p', 'hint');
   bio.id = 'profileBio';
-  bio.style.cssText = 'margin:6px 0 10px;white-space:pre-wrap;overflow-wrap:anywhere';
-  $('profileName').after(bio);
+  bio.style.cssText = 'margin:12px 0;white-space:pre-wrap;overflow-wrap:anywhere;color:#e6dcf5';
 
-  const oldEdit = $('editName');
-  const editBtn = mk('button', 'btn', 'تعديل البروفايل');
-  if (oldEdit) {
-    oldEdit.after(editBtn);
-    oldEdit.style.display = 'none';
-  } else {
-    top.append(editBtn);
+  const btnRow = mk('div');
+  btnRow.style.cssText = 'display:flex;gap:8px';
+  const editBtn = mk('button', 'ghost', 'تعديل البروفايل');
+  editBtn.style.cssText = 'flex:1;padding:10px';
+  const share = mk('button', 'ghost', 'مشاركة البروفايل');
+  share.style.cssText = 'flex:1;padding:10px';
+  btnRow.append(editBtn, share);
+
+  ig.append(bar, headRow, bio, btnRow);
+  top.before(ig);
+
+  const tabs = mk('div', '', '▦');
+  tabs.style.cssText =
+    'text-align:center;font-size:20px;padding:8px 0;margin-bottom:12px;' +
+    'border-bottom:2px solid #c48bff';
+  ig.after(tabs);
+
+  const emptyCta = mk('div', 'panel');
+  emptyCta.style.cssText = 'text-align:center;padding:28px 16px;display:none';
+  const ctaTitle = mk('h2', '', 'دير أول منشور ديالك');
+  const ctaBtn = mk('button', 'btn', 'إنشاء');
+  emptyCta.append(ctaTitle, mk('p', 'hint', 'عمر هاد البلاصة بأول لحظة'), ctaBtn);
+  tabs.after(emptyCta);
+
+  plus.onclick = () => { const b = $('newPost'); if (b) b.click(); };
+  ctaBtn.onclick = plus.onclick;
+  share.onclick = async () => {
+    const url = location.origin + location.pathname;
+    try {
+      if (navigator.share) await navigator.share({ title: 'SocialX', text: 'جرب SocialX', url });
+      else { await navigator.clipboard.writeText(url); alert('تنسخ الرابط ✅'); }
+    } catch (e) { /* cancelled */ }
+  };
+
+  async function stats() {
+    if (!me) return;
+    const cnt = (table, col) =>
+      sb.from(table).select('*', { count: 'exact', head: true }).eq(col, me);
+    const [p, a, b] = await Promise.all([
+      cnt('posts', 'user_id'),
+      cnt('follows', 'following_id'),
+      cnt('follows', 'follower_id')
+    ]);
+    nPosts.textContent = p.count || 0;
+    nFollowers.textContent = a.count || 0;
+    nFollowing.textContent = b.count || 0;
+    emptyCta.style.display = (p.count || 0) === 0 ? '' : 'none';
   }
 
   /* ---------- صفحة الإعدادات ---------- */
@@ -144,7 +213,9 @@
     const { data } = await sb.from('profiles').select('username,bio,avatar_url').eq('id', me).maybeSingle();
     if (!data) return;
     bio.textContent = data.bio || '';
+    uname.textContent = data.username || '';
     if (data.username) $('profileName').textContent = data.username;
+    stats();
     currentAvatar = data.avatar_url || null;
     if (profileAv) paint(profileAv, currentAvatar, (data.username || 'S')[0].toUpperCase());
   }
