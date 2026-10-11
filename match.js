@@ -255,6 +255,7 @@
 
     people = (profiles.data || [])
       .filter(p => !excluded.has(p.user_id));
+        people = people.filter(p => !window.sxDiscoverFilter || window.sxDiscoverFilter(p));
 
     current = 0;
     showCard();
