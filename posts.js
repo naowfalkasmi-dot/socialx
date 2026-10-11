@@ -1,6 +1,16 @@
 (function () {
   const sb = window.sb;
   let me = null;
+  const names = {};
+  const SAVED_KEY = 'socialx-saved-posts';
+  const openComments = new Set();
+
+  const getSaved = () => {
+    try { return new Set(JSON.parse(localStorage.getItem(SAVED_KEY)) || []); } catch (e) { return new Set(); }
+  };
+  const putSaved = (set) => {
+    try { localStorage.setItem(SAVED_KEY, JSON.stringify(Array.from(set))); } catch (e) { /* ignore */ }
+  };
 
   async function load() {
     if (!me) return;
@@ -9,23 +19,159 @@
       sb.from('profiles').select('id,username')
     ]);
     if (p.error) { console.error(p.error); return; }
-    const names = {};
     (u.data || []).forEach((x) => { names[x.id] = x.username; });
     if (names[me]) state.name = names[me];
-    state.posts = p.data.reverse().map((r) => ({
-      id: r.id,
-      author: names[r.user_id] || 'مستخدم',
-      text: r.content || '',
-      image: null,
-      date: r.created_at,
-      likes: 0,
-      liked: false,
-      saved: false,
-      comments: [],
-      mine: r.user_id === me
-    }));
+
+    const ids = p.data.map((r) => r.id);
+    let likes = [];
+    let comments = [];
+    if (ids.length) {
+      const [l, c] = await Promise.all([
+        sb.from('post_likes').select('post_id,user_id').in('post_id', ids),
+        sb.from('post_comments').select('id,post_id,user_id,body,created_at').in('post_id', ids).order('created_at', { ascending: true })
+      ]);
+      likes = l.data || [];
+      comments = c.data || [];
+    }
+    const likeCount = {};
+    const likedByMe = new Set();
+    likes.forEach((x) => {
+      const k = String(x.post_id);
+      likeCount[k] = (likeCount[k] || 0) + 1;
+      if (x.user_id === me) likedByMe.add(k);
+    });
+    const byPost = {};
+    comments.forEach((c) => {
+      const k = String(c.post_id);
+      (byPost[k] = byPost[k] || []).push({
+        id: c.id,
+        author: names[c.user_id] || 'مستخدم',
+        text: c.body,
+        mine: c.user_id === me
+      });
+    });
+
+    const saved = getSaved();
+    state.posts = p.data.reverse().map((r) => {
+      const k = String(r.id);
+      return {
+        id: r.id,
+        author: names[r.user_id] || 'مستخدم',
+        text: r.content || '',
+        image: null,
+        date: r.created_at,
+        likes: likeCount[k] || 0,
+        liked: likedByMe.has(k),
+        saved: saved.has(k),
+        commentRows: byPost[k] || [],
+        comments: [],
+        mine: r.user_id === me
+      };
+    });
     render();
   }
+
+  /* ---------- رسم المنشورات (لايكات وتعليقات حقيقية) ---------- */
+  window.renderPosts = function (target, posts) {
+    target.replaceChildren();
+    if (!posts.length) {
+      target.append(el('div', 'panel empty', 'ما كاين حتى منشور هنا دابا ✨'));
+      return;
+    }
+    posts.forEach((p) => {
+      const key = String(p.id);
+      const card = el('article', 'panel');
+      const head = el('div', 'post-head');
+      const av = el('div', 'avatar', (p.author || 'S')[0].toUpperCase());
+      const info = el('div');
+      info.append(
+        el('strong', '', p.author || 'مستخدم'),
+        el('small', '', new Date(p.date).toLocaleString('ar-MA'))
+      );
+      head.append(av, info);
+      card.append(head, el('div', 'post-text', p.text));
+
+      const rows = p.commentRows || [];
+      const actions = el('div', 'actions');
+      const like = el('button', p.liked ? 'liked' : '', '♥ ' + (p.likes || 0));
+      const comment = el('button', '', '◉ تعليق ' + rows.length);
+      const bookmark = el('button', '', '☆ ' + (p.saved ? 'محفوظ' : 'حفظ'));
+
+      like.onclick = async () => {
+        if (!me) return;
+        like.disabled = true;
+        const was = p.liked;
+        p.liked = !was;
+        p.likes = Math.max(0, (p.likes || 0) + (p.liked ? 1 : -1));
+        render();
+        const r = was
+          ? await sb.from('post_likes').delete().eq('post_id', p.id).eq('user_id', me)
+          : await sb.from('post_likes').insert({ post_id: p.id });
+        if (r.error) {
+          p.liked = was;
+          p.likes = Math.max(0, (p.likes || 0) + (was ? 1 : -1));
+          render();
+          alert('وقع مشكل: ' + r.error.message);
+        }
+      };
+
+      bookmark.onclick = () => {
+        p.saved = !p.saved;
+        const s = getSaved();
+        if (p.saved) s.add(key); else s.delete(key);
+        putSaved(s);
+        render();
+      };
+
+      actions.append(like, comment, bookmark);
+      card.append(actions);
+
+      const box = el('div', openComments.has(key) ? 'comments' : 'comments hidden');
+      rows.forEach((c) => {
+        const line = el('div', 'comment');
+        line.append(el('strong', '', c.author + ': '), document.createTextNode(c.text));
+        if (c.mine) {
+          const del = el('button', 'ghost', '✕');
+          del.style.cssText = 'margin-inline-start:8px;padding:2px 8px';
+          del.onclick = async () => {
+            const r = await sb.from('post_comments').delete().eq('id', c.id);
+            if (r.error) { alert('وقع مشكل: ' + r.error.message); return; }
+            p.commentRows = rows.filter((x) => x.id !== c.id);
+            render();
+          };
+          line.append(del);
+        }
+        box.append(line);
+      });
+
+      const form = el('form', 'comment-form');
+      const input = el('input');
+      input.placeholder = 'اكتب تعليقاً...';
+      input.maxLength = 300;
+      const send = el('button', 'btn', 'إرسال');
+      send.type = 'submit';
+      form.append(input, send);
+      form.onsubmit = async (e) => {
+        e.preventDefault();
+        const v = input.value.trim();
+        if (!v || !me) return;
+        send.disabled = true;
+        const r = await sb.from('post_comments').insert({ post_id: p.id, body: v }).select('id').single();
+        if (r.error) { send.disabled = false; alert('وقع مشكل: ' + r.error.message); return; }
+        (p.commentRows = p.commentRows || []).push({ id: r.data.id, author: state.name, text: v, mine: true });
+        openComments.add(key);
+        render();
+      };
+      box.append(form);
+
+      comment.onclick = () => {
+        box.classList.toggle('hidden');
+        if (box.classList.contains('hidden')) openComments.delete(key); else openComments.add(key);
+      };
+      card.append(box);
+      target.append(card);
+    });
+  };
 
   document.getElementById('publish').onclick = async () => {
     const text = document.getElementById('content').value.trim();
